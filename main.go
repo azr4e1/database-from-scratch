@@ -1,9 +1,9 @@
 package main
 
 import (
+	"bufio"
 	"errors"
 	"fmt"
-	"io"
 	"os"
 	"strings"
 )
@@ -11,9 +11,10 @@ import (
 type Command string
 
 const (
-	GET  Command = "get"
-	SET  Command = "set"
-	FILE string  = "./.db.txt"
+	GET    Command = "get"
+	SET    Command = "set"
+	DELETE Command = "delete"
+	FILE   string  = "./.db.txt"
 )
 
 func help() {
@@ -31,36 +32,34 @@ func set(args []string, db *os.File) error {
 	return err
 }
 
-func get(args []string, db *os.File) (string, error) {
+func get(args []string) (string, error) {
 	if len(args) != 1 {
-		return "", errors.New("Must provide a single <key> value.")
+		return "", errors.New("must provide a single <key> value")
 	}
-	recordsBytes, err := io.ReadAll(db)
+
+	f, err := os.Open(FILE)
 	if err != nil {
 		return "", err
 	}
-	recordsString := strings.TrimSpace(string(recordsBytes))
-	lines := strings.Split(string(recordsString), "\n")
-	dbMap := make(map[string]string)
-	for _, l := range lines {
-		el := strings.Split(l, ": ")
-		dbMap[el[0]] = el[1]
+	defer f.Close()
+
+	prefix := args[0] + ": "
+	scanner := bufio.NewScanner(f)
+
+	for scanner.Scan() {
+		line := scanner.Text()
+		if strings.HasPrefix(line, prefix) {
+			return strings.TrimPrefix(line, prefix), nil
+		}
 	}
 
-	result, test := dbMap[args[0]]
-
-	if !test {
-		err = errors.New("Couldn't find key provided.")
+	if err := scanner.Err(); err != nil {
+		return "", err
 	}
-
-	return result, err
+	return "", errors.New("key not found")
 }
 
 func main() {
-	file, err := os.OpenFile(FILE, os.O_APPEND|os.O_CREATE|os.O_RDWR, 0644)
-	if err != nil {
-		fmt.Println("Couldn't read database")
-	}
 	args := os.Args[1:]
 	if len(args) == 0 {
 		help()
@@ -70,14 +69,14 @@ func main() {
 	commandArgs := args[1:]
 	switch Command(command) {
 	case GET:
-		result, err := get(commandArgs, file)
+		result, err := get(commandArgs)
 		if err != nil {
 			fmt.Println(err)
 			os.Exit(2)
 		}
 		fmt.Println(result)
 	case SET:
-		err := set(commandArgs, file)
+		err := set(commandArgs)
 		if err != nil {
 			fmt.Println(err)
 			os.Exit(2)
